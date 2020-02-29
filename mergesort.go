@@ -6,35 +6,76 @@ import (
 	"sync"
 )
 
+var numCpu int
+
+func init() {
+	numCpu = runtime.NumCPU()
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
 // MergeSort performs the merge sort algorithm.
 // Please supplement this function to accomplish the home work.
 func MergeSort(src []int64) {
+	if len(src) <= 1 {
+		return
+	}
+	p, q := 0, len(src)-1
+	dataPerCpu := len(src) / numCpu
+	pairs := make([][2]int, 0, numCpu)
+	if dataPerCpu < 1 {
+		dataPerCpu = 1
+	}
+
+	for i := 0; i < numCpu; i++ {
+		if p > q {
+			break
+		}
+		end := min(p+dataPerCpu-1, q)
+		pair := [2]int{p, end}
+		pairs = append(pairs, pair)
+		p = end + 1
+	}
+	if pairs[len(pairs)-1][1] < q {
+		pairs[len(pairs)-1][1] = q
+	}
+
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go DivideAndMerge(src, 0, len(src)-1, &wg)
+	for _, pair := range pairs {
+		wg.Add(1)
+		go DivideMerge(src, pair[0], pair[1], &wg)
+	}
 	wg.Wait()
+
+	for len(pairs) > 1 {
+		x := len(pairs) - 1
+		var i int
+		for 2 *i + 1 <= x {
+			wg.Add(1)
+			go Merge(src, pairs[2*i][0], pairs[2*i][1], pairs[2*i+1][1], &wg)
+			pairs[i] = [2]int{pairs[2*i][0], pairs[2*i+1][1]}
+			i++
+		}
+		wg.Wait()
+		if 2 * i == x {
+			pairs[i] = pairs[x]
+			pairs = pairs[:i+1]
+		} else {
+			pairs = pairs[:i]
+		}
+	}
 }
 
-func DivideAndMerge(src []int64, p, q int, wg *sync.WaitGroup) {
+func Merge(src []int64, p, mid, q int, wg *sync.WaitGroup) {
 	if wg != nil {
 		defer wg.Done()
 	}
-	if p >= q {
-		return
-	}
-	mid := (p + q) / 2
 
-	if q - q + 1 >= 2000 {
-		var waitGroup sync.WaitGroup
-		waitGroup.Add(1)
-		go DivideAndMerge(src, p, mid, &waitGroup)
-		waitGroup.Add(1)
-		go DivideAndMerge(src, mid+1, q, &waitGroup)
-		waitGroup.Wait()
-	} else {
-		DivideAndMerge(src, p, mid, nil)
-		DivideAndMerge(src, mid+1, q, nil)
-	}
 	temp := make([]int64, 0, q-p+1)
 	i, j := p, mid+1
 	for i <= mid && j <= q {
@@ -57,8 +98,22 @@ func DivideAndMerge(src []int64, p, q int, wg *sync.WaitGroup) {
 	copy(src[p:q+1], temp)
 }
 
+func DivideMerge(src []int64, p, q int, wg *sync.WaitGroup) {
+	if wg != nil {
+		defer wg.Done()
+	}
+
+	if p >= q {
+		return
+	}
+
+	mid := (p + q) / 2
+	DivideMerge(src, p, mid, nil)
+	DivideMerge(src, mid+1, q, nil)
+	Merge(src, p, mid, q, nil)
+}
+
 func main() {
-	fmt.Println(runtime.NumCPU())
 	src := []int64{5, 1, 4, 3, 2}
 	MergeSort(src)
 	fmt.Println(src)
